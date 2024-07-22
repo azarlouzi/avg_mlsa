@@ -1,42 +1,128 @@
-from typing import Callable, Dict, List, Tuple, Union
+from typing import Callable, Dict, List, Tuple, Union, Any
+import numpy.typing as npt
 import argparse
+import numpy as np
 from collections import defaultdict
 import csv
 import json
 import math
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import os
-from scipy.stats import norm
-from statistics import mean
+import scipy.stats as stats
+import scipy.optimize as opt
+import statistics as st
+from sklearn.mixture import GaussianMixture
 import seaborn as sns
 
-sns.set(context="paper", style="darkgrid", palette="crest")
+sns.set()
 
-def plot_joint_density(algorithm:str, color:str, VaR_errors:List[float], ES_errors:List[float],
-                       VaR_label:str , ES_label:str, outpath:str):
-   p = sns.jointplot(x=VaR_errors, y=ES_errors, kind="kde",
-                     fill=True, alpha=0.5, color=color,
-                     height=8, ratio=5)
-   p.plot_joint(sns.scatterplot, color="blue")
-   p.fig.suptitle(algorithm, fontsize=16)
-   p.fig.subplots_adjust(hspace=0, wspace=0, top=0.95, right=0.95)
-   p.ax_joint.set_xlabel(xlabel=VaR_label, fontsize=14)
-   p.ax_joint.set_ylabel(ylabel=ES_label, fontsize=14)
-   #p.ax_joint.set_xticklabels(p.ax_joint.get_xticks(), size=10)
-   #p.ax_joint.set_yticklabels(p.ax_joint.get_yticks(), size=10)
+def gaussian_pdf(x, mu, sigma):
+   return stats.norm.pdf((x - mu) / sigma)
+
+def plot_joint_density(algorithm:str, xlim:Tuple[float,float], ylim:Tuple[float,float],
+                       VaR_errors: List[float], ES_errors: List[float], mean:npt.NDArray, cov:npt.NDArray,
+                       ellipse_data:Dict[str,Union[npt.NDArray,float]], VaR_label: str, ES_label: str, outpath: str):
+
+   fig, axs = plt.subplots(2, 2, figsize=(10, 10), height_ratios=(1, 6), width_ratios=(6, 1))
+   #plt.autoscale(False)
+   fig.suptitle(algorithm, size=24)
+   fig.subplots_adjust(hspace=0.05, wspace=0.05)
+
+   ellipse = mpl.patches.Ellipse(ellipse_data["center"], ellipse_data["semi_major_axis"],
+                                 ellipse_data["semi_minor_axis"], angle=ellipse_data["angle"],
+                                 facecolor="none", edgecolor="tab:red",
+                                 linewidth=3, alpha=0.9, clip_box=axs[1,0].bbox)
+   axs[1,0].add_artist(ellipse)
+   axs[1,0].scatter(VaR_errors, ES_errors, alpha=0.4)
+   axs[1,0].set_xlabel(VaR_label, size=18)
+   axs[1,0].set_ylabel(ES_label, size=18)
+   axs[1,0].set_xlim(xlim)
+   axs[1,0].set_ylim(ylim)
+
+   x = np.array([xlim[0] + (xlim[1]-xlim[0]) * i/1000 for i in range(0, 1001)])
+   y = gaussian_pdf(x, mean[0], math.sqrt(cov[0,0]))
+   axs[0,0].plot(x, y, '-', color='tab:red', linewidth=2.2)
+   sns.histplot(VaR_errors, bins=10, stat="probability", alpha=0.675, ax=axs[0,0])
+   axs[0,0].set_xlabel('')
+   axs[0,0].set_ylabel("pdf", size=18)
+   axs[0,0].set_xlim(xlim)
+   axs[0,0].set_ylim((0, 0.5))
+   axs[0,0].tick_params(bottom=False, left=False, labelbottom=False)
+   axs[0,0].set_yticks([0, 0.25, 0.5], labels=['', '0.25', '0.5'])
+
+   x = np.array([ylim[0] + (ylim[1] - ylim[0]) * i / 1000 for i in range(0, 1001)])
+   y = gaussian_pdf(x, mean[1], math.sqrt(cov[1,1]))
+   axs[1,1].plot(y, x, '-', color='tab:red', linewidth=2.2)
+   sns.histplot(y=ES_errors, bins=10, stat="probability", alpha=0.675, ax=axs[1,1])
+   axs[1,1].set_ylabel('')
+   axs[1,1].set_xlabel("pdf", size=18)
+   axs[1,1].set_ylim(ylim)
+   axs[1,1].set_xlim((0, 0.5))
+   axs[1,1].tick_params(left=False, bottom=False, labelleft=False)
+   axs[1,1].set_xticks([0, 0.25, 0.5], labels=['', '0.25', '0.5'])
+
+   axs[0,1].axis('off')
 
    plt.tight_layout()
    fname = algorithm.lower().replace("-","_").replace(" ", "_") + ".pdf"
-   p.fig.savefig(os.path.join(outpath, fname), bbox_inches="tight", pad_inches=0)
+   fig.savefig(os.path.join(outpath, fname), bbox_inches="tight", pad_inches=0)
+
+def fit_gaussian(xy:npt.NDArray)->Tuple[npt.NDArray,npt.NDArray]:
+   model = GaussianMixture(n_components=1).fit(xy)
+   mean = model.means_[0]
+   cov = model.covariances_[0]
+   return mean, cov
+
+def lim_interval(mean:npt.NDArray, cov:npt.NDArray)->Tuple[Tuple[float,float],Tuple[float,float]]:
+   mean1, mean2 = mean[0], mean[1]
+   sd1, sd2 = np.sqrt(cov[0,0]), np.sqrt(cov[1,1])
+   xlim = [np.round(mean1 - 3*sd1), np.round(mean1 + 3*sd1)]
+   ylim = [np.round(mean2 - 3*sd2), np.round(mean2 + 3*sd2)]
+   xlen = xlim[1] - xlim[0]
+   ylen = ylim[1] - ylim[0]
+   adj = np.abs(ylen - xlen)/2
+   if xlen > ylen:
+      ylim[0] -= adj
+      ylim[1] += adj
+   else:
+      xlim[0] -= adj
+      xlim[1] += adj
+   return tuple(xlim), tuple(ylim)
+
+def compute_ellipse(mean:npt.NDArray, cov:npt.NDArray)->Dict[str,Union[npt.NDArray,float,float,float]]:
+   v, w = np.linalg.eigh(cov)
+   v = 2*np.sqrt(stats.chi2.ppf(0.95, 2)*v)
+   u = w[0]/np.linalg.norm(w[0])
+   angle = np.arctan2(u[1], u[0]) * 180/np.pi
+   return {
+      "center": mean,
+      "semi_major_axis": v[0],
+      "semi_minor_axis": v[1],
+      "angle": angle,
+   }
 
 def sub_process(filename:str, outpath:str, VaR:float, ES:float)->None:
+   out = {
+      "VaR": VaR,
+      "ES": ES,
+   }
    with open(filename) as f:
       d = json.load(f)
 
    h = d["precision"]
    beta = d["beta"]
-   VaR_h = d["biased_VaR"]
-   ES_h = d["biased_ES"]
+
+   biased_VaR_values, biased_ES_values = [], []
+   for entry in d["biased_risk_measures"]:
+      VaR, ES = entry
+      biased_VaR_values.append(VaR)
+      biased_ES_values.append(ES)
+   biased_VaR = st.mean(biased_VaR_values)
+   biased_ES = st.mean(biased_ES_values)
+
+   out["biased_VaR"] = biased_VaR
+   out["biased_ES"] = biased_ES
 
    VaR_errors = []
    VaR_avg_errors = []
@@ -49,16 +135,28 @@ def sub_process(filename:str, outpath:str, VaR:float, ES:float)->None:
       data = dict(zip(keys, values))
       if data["status"] == "failure":
          continue
-      VaR_errors.append(math.pow(h, -beta)*(data["VaR"] - VaR))
-      VaR_avg_errors.append(math.pow(h, -1)*(data["VaR_avg"] - VaR))
-      ES_errors.append(math.pow(h, -1)*(data["ES"] - ES))
-   plot_joint_density("Unbiased SA", "tab:red", VaR_errors, ES_errors,
-                      r"$h^{-\beta}(\xi_{\lceil h^{-2}\rceil}-\xi_{\star})$",
-                      r"$h^{-1}(\chi_{\lceil h^{-2}\rceil}-\chi_{\star})$",
+      VaR_errors.append(math.pow(h,-beta)*(data["VaR"] - VaR))
+      VaR_avg_errors.append(math.pow(h,-1)*(data["VaR_avg"] - VaR))
+      ES_errors.append(math.pow(h,-1)*(data["ES"] - ES))
+   mean, cov = fit_gaussian(np.stack((VaR_errors, ES_errors), axis=1))
+   xlim, ylim = lim_interval(mean, cov)
+   out["Unbiased SA"] = {
+      "mean": mean.tolist(),
+      "covariance": cov.tolist(),
+   }
+   plot_joint_density("Unbiased SA", xlim, ylim, VaR_errors, ES_errors, mean, cov, compute_ellipse(mean, cov),
+                      r"$h^{-\beta}(\xi^{0}_{\lceil h^{-2}\rceil}-\xi^{0}_{\star})$",
+                      r"$h^{-1}(\chi^{0}_{\lceil h^{-2}\rceil}-\chi^{0}_{\star})$",
                       outpath)
-   plot_joint_density("Averaged Unbiased SA", "tab:orange", VaR_avg_errors, ES_errors,
-                      r"$h^{-1}(\bar{\xi}_{\lceil h^{-2}\rceil}-\xi_{\star})$",
-                      r"$h^{-1}(\chi_{\lceil h^{-2}\rceil}-\chi_{\star})$",
+   mean, cov = fit_gaussian(np.stack((VaR_avg_errors, ES_errors), axis=1))
+   xlim, ylim = lim_interval(mean, cov)
+   out["Averaged Unbiased SA"] = {
+      "mean": mean.tolist(),
+      "covariance": cov.tolist(),
+   }
+   plot_joint_density("Averaged Unbiased SA", xlim, ylim, VaR_avg_errors, ES_errors, mean, cov, compute_ellipse(mean, cov),
+                      r"$h^{-1}(\bar{\xi}^{0}_{\lceil h^{-2}\rceil}-\xi^{0}_{\star})$",
+                      r"$h^{-1}(\chi^{0}_{\lceil h^{-2}\rceil}-\chi^{0}_{\star})$",
                       outpath)
 
    VaR_errors.clear()
@@ -73,15 +171,27 @@ def sub_process(filename:str, outpath:str, VaR:float, ES:float)->None:
       if data["status"] == "failure":
          continue
       VaR_errors.append(math.pow(h, -beta)*(data["VaR"] - VaR))
-      VaR_avg_errors.append(math.pow(h, -1)*(data["VaR_avg"] - VaR))
-      ES_errors.append(math.pow(h, -1)*(data["ES"] - ES))
-   plot_joint_density("Nested SA", "tab:red", VaR_errors, ES_errors,
-                      r"$h^{-\beta}(\xi^{h}_{\lceil h^{-2}\rceil}-\xi_{\star})$",
-                      r"$h^{-1}(\chi^{h}_{\lceil h^{-2}\rceil}-\chi_{\star})$",
+      VaR_avg_errors.append(math.pow(h,-1)*(data["VaR_avg"] - VaR))
+      ES_errors.append(math.pow(h,-1)*(data["ES"] - ES))
+   mean, cov = fit_gaussian(np.stack((VaR_errors, ES_errors), axis=1))
+   xlim, ylim = lim_interval(mean, cov)
+   out["Nested SA"] = {
+      "mean": mean.tolist(),
+      "covariance": cov.tolist(),
+   }
+   plot_joint_density("Nested SA", xlim, ylim, VaR_errors, ES_errors, mean, cov, compute_ellipse(mean, cov),
+                      r"$h^{-\beta}(\xi^{h}_{\lceil h^{-2}\rceil}-\xi^{0}_{\star})$",
+                      r"$h^{-1}(\chi^{h}_{\lceil h^{-2}\rceil}-\chi^{0}_{\star})$",
                       outpath)
-   plot_joint_density("Averaged Nested SA", "tab:orange", VaR_avg_errors, ES_errors,
-                      r"$h^{-1}(\bar{\xi}^{h}_{\lceil h^{-2}\rceil}-\xi_{\star})$",
-                      r"$h^{-1}(\chi^{h}_{\lceil h^{-2}\rceil}-\chi_{\star})$",
+   mean, cov = fit_gaussian(np.stack((VaR_avg_errors, ES_errors), axis=1))
+   xlim, ylim = lim_interval(mean, cov)
+   out["Averaged Nested SA"] = {
+      "mean": mean.tolist(),
+      "covariance": cov.tolist(),
+   }
+   plot_joint_density("Averaged Nested SA", xlim, ylim, VaR_avg_errors, ES_errors, mean, cov, compute_ellipse(mean, cov),
+                      r"$h^{-1}(\bar{\xi}^{h}_{\lceil h^{-2}\rceil}-\xi^{0}_{\star})$",
+                      r"$h^{-1}(\chi^{h}_{\lceil h^{-2}\rceil}-\chi^{0}_{\star})$",
                       outpath)
 
    VaR_errors.clear()
@@ -95,23 +205,37 @@ def sub_process(filename:str, outpath:str, VaR:float, ES:float)->None:
       data = dict(zip(keys, values))
       if data["status"] == "failure":
          continue
-      VaR_errors.append(math.pow(h, -1)*(data["VaR"] - VaR_h))
-      ES_errors.append(math.pow(h, -1/beta-(2*beta-1)/(4*beta*(1+beta)))*(data["ES"] - ES_h))
+      VaR_errors.append(math.pow(h,-1)*(data["VaR"] - biased_VaR))
+      ES_errors.append(math.pow(h,-1/beta-(2*beta-1)/(4*beta*(1+beta)))*(data["ES"] - biased_ES))
    keys = d["avg_ml_sa_simulations"]["header"]
    for values in d["ml_sa_simulations"]["rows"]:
       data = dict(zip(keys, values))
       if data["status"] == "failure":
          continue
-      VaR_avg_errors.append(math.pow(h, -(beta+3)/(4*beta))*(data["VaR_avg"] - VaR_h))
-      ES_avg_errors.append(math.pow(h, -1/beta-(2*beta-1)/(4*beta*(1+beta)))*(data["ES"] - ES_h))
-   plot_joint_density("Multilevel SA", "tab:red", VaR_errors, ES_errors,
+      VaR_avg_errors.append(math.pow(h,-(beta+3)/(4*beta))*(data["VaR_avg"] - biased_VaR))
+      ES_avg_errors.append(math.pow(h,-1/beta-(2*beta-1)/(4*beta*(1+beta)))*(data["ES"] - biased_ES))
+   mean, cov = fit_gaussian(np.stack((VaR_errors, ES_errors), axis=1))
+   xlim, ylim = lim_interval(mean, cov)
+   out["Multilevel SA"] = {
+      "mean": mean.tolist(),
+      "covariance": cov.tolist(),
+   }
+   plot_joint_density("Multilevel SA", xlim, ylim, VaR_errors, ES_errors, mean, cov, compute_ellipse(mean, cov),
                       r"$h_L^{-1}(\xi^{h_L}_{\mathbf{N}}-\xi^{h_L}_{\star})$",
                       r"$h_L^{-\frac{1}{\beta}-\frac{2\beta-1}{4\beta(1+\beta)}}(\chi^{h_L}_{\mathbf{N}}-\chi^{h_L}_{\star})$",
                       outpath)
-   plot_joint_density("Averaged Multilevel SA", "tab:orange", VaR_avg_errors, ES_avg_errors,
+   mean, cov = fit_gaussian(np.stack((VaR_avg_errors, ES_avg_errors), axis=1))
+   xlim, ylim = lim_interval(mean, cov)
+   out["Averaged Multilevel SA"] = {
+      "mean": mean.tolist(),
+      "covariance": cov.tolist(),
+   }
+   plot_joint_density("Averaged Multilevel SA", xlim, ylim, VaR_avg_errors, ES_avg_errors, mean, cov, compute_ellipse(mean, cov),
                       r"$h_L^{-1}(\bar{\xi}^{h_L}_{\mathbf{N}}-\xi^{h_L}_{\star})$",
                       r"$h_L^{-\frac{9}{8}}(\chi^{h_L}_{\mathbf{N}}-\chi^{h_L}_{\star})$",
                       outpath)
+
+   print(json.dumps(out, indent=4))
 
 def compute_rate_swap_model_risk_measures(
    r:float, S_0:float, kappa:float, sigma:float,
@@ -134,8 +258,8 @@ def compute_rate_swap_model_risk_measures(
    eta = nominal*sigma*math.sqrt((1-math.exp(-2*kappa*delta))/(2*kappa))* \
          sum(discount(reset(i))*Delta*math.exp(kappa*reset(i-1)) for i in range(2,d+1))
 
-   VaR = eta*norm.ppf(alpha)
-   ES = eta*norm.pdf(VaR/eta)/(1-alpha) 
+   VaR = eta*stats.norm.ppf(alpha)
+   ES = eta*stats.norm.pdf(VaR/eta)/(1-alpha) 
 
    return VaR, ES
 
@@ -152,16 +276,11 @@ def process(filename:str, outpath:str)->None:
 
    VaR, ES = compute_rate_swap_model_risk_measures(r, S_0, kappa, sigma, Delta,
                                                    T, delta, leg_0, alpha)
-   print("{")
-   print("\t\"VaR\": %.5f," % VaR)
-   print("\t\"ES\": %.5f" % ES)
-   print("}")
-
    sub_process(filename, outpath, VaR, ES)
 
 if __name__ == "__main__":
    p = argparse.ArgumentParser(description="Process and plot SA results")
-   p.add_argument("input_json", help="Json file name")
+   p.add_argument("input_json", help="Input Json file name")
    p.add_argument("output_path", help="Output path for figures")
    args = p.parse_args()
 
