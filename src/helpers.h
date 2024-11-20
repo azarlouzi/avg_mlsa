@@ -22,7 +22,4 @@ double doleans_dade(double m = 0, double sd = 1);
 double heaviside(double x);
 double positive_part(double x);
 
-double power(double x, int n);
-double power(double x, double y);
-
 #endif // _HELPERS_

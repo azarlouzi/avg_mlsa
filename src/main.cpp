@@ -2,7 +2,6 @@
 #include "ml_sa.h"
 #include "nested_sa.h"
 #include "sa.h"
-#include "option_model.h"
 #include "swap_model.h"
 #include <cmath>
 #include <cstdio>
@@ -64,17 +63,17 @@ void subroutine(IN     double            xi_0,
    // Averaged ML SA
 
    std::printf("\t\"avg_ml_sa_simulations\": {\n");
-   std::printf("\t\t\"header\": [\"id\", \"status\", \"VaR\", \"VaR_avg\", \"ES\"],\n");
+   std::printf("\t\t\"header\": [\"id\", \"status\", \"VaR\", \"VaR_avg\", \"ES\", \"ES_var\"],\n");
    std::printf("\t\t\"rows\": [\n");
 
    for (i = 0; i < n_runs; i++) {
       try {
          configure_avg_ml_sa(h_0, M, L, scaler, h, N);
-         risk_measures = ml_sa(xi_0, chi_0, alpha, L, h, N, ml_sa_gamma, nested_simulator, ml_simulator);
-         std::printf("\t\t\t[%d, \"success\", %.10f, %.10f, %.10f]",
-                     i+1, risk_measures.VaR, risk_measures.VaR_avg, risk_measures.ES);
+         risk_measures = ml_sa(xi_0, chi_0, alpha, L, M, beta, h, N, ml_sa_gamma, true, nested_simulator, ml_simulator);
+         std::printf("\t\t\t[%d, \"success\", %.10f, %.10f, %.10f, %.10f]",
+                     i+1, risk_measures.VaR, risk_measures.VaR_avg, risk_measures.ES, risk_measures.ES_var);
       } catch (const std::exception& e) {
-         std::printf("\t\t\t[%d, \"failure\", \"%s\",\"na\",\"na\"]", i+1, e.what());
+         std::printf("\t\t\t[%d, \"failure\", \"%s\",\"na\",\"na\",\"na\"]", i+1, e.what());
       }
       print_comma(i < n_runs-1);
    }
@@ -84,17 +83,17 @@ void subroutine(IN     double            xi_0,
    // ML SA
 
    std::printf("\t\"ml_sa_simulations\": {\n");
-   std::printf("\t\t\"header\": [\"id\", \"status\", \"VaR\", \"VaR_avg\", \"ES\"],\n");
+   std::printf("\t\t\"header\": [\"id\", \"status\", \"VaR\", \"VaR_avg\", \"ES\", \"ES_var\"],\n");
    std::printf("\t\t\"rows\": [\n");
 
    for (i = 0; i < n_runs; i++) {
       try {
          configure_ml_sa(beta, h_0, M, L, scaler, h, N);
-         risk_measures = ml_sa(xi_0, chi_0, alpha, L, h, N, ml_sa_gamma, nested_simulator, ml_simulator);
-         std::printf("\t\t\t[%d, \"success\", %.10f, %.10f, %.10f]",
-                     i+1, risk_measures.VaR, risk_measures.VaR_avg, risk_measures.ES);
+         risk_measures = ml_sa(xi_0, chi_0, alpha, L, M, beta, h, N, ml_sa_gamma, false, nested_simulator, ml_simulator);
+         std::printf("\t\t\t[%d, \"success\", %.10f, %.10f, %.10f, %.10f]",
+                     i+1, risk_measures.VaR, risk_measures.VaR_avg, risk_measures.ES, risk_measures.ES_var);
       } catch (const std::exception& e) {
-         std::printf("\t\t\t[%d, \"failure\", \"%s\",\"na\",\"na\"]", i+1, e.what());
+         std::printf("\t\t\t[%d, \"failure\", \"%s\",\"na\",\"na\",\"na\"]", i+1, e.what());
       }
       print_comma(i < n_runs-1);
    }
@@ -104,17 +103,17 @@ void subroutine(IN     double            xi_0,
    // Nested SA
 
    std::printf("\t\"nested_sa_simulations\": {\n");
-   std::printf("\t\t\"header\": [\"id\", \"status\", \"VaR\", \"VaR_avg\", \"ES\"],\n");
+   std::printf("\t\t\"header\": [\"id\", \"status\", \"VaR\", \"VaR_avg\", \"ES\", \"ES_var\"],\n");
    std::printf("\t\t\"rows\": [\n");
 
    for (i = 0; i < n_runs; i++) {
          try {
          n = nested_sa_optimal_steps(precision, scaler);
          risk_measures = nested_sa(xi_0, chi_0, alpha, precision, n, nested_sa_gamma, nested_simulator);
-         std::printf("\t\t\t[%d, \"success\", %.10f, %.10f, %.10f]",
-                     i+1, risk_measures.VaR, risk_measures.VaR_avg, risk_measures.ES);
+         std::printf("\t\t\t[%d, \"success\", %.10f, %.10f, %.10f, %.10f]",
+                     i+1, risk_measures.VaR, risk_measures.VaR_avg, risk_measures.ES, risk_measures.ES_var);
       } catch (const std::exception& e) {
-         std::printf("\t\t\t[%d, \"failure\", \"%s\",\"na\",\"na\"]", i+1, e.what());
+         std::printf("\t\t\t[%d, \"failure\", \"%s\",\"na\",\"na\",\"na\"]", i+1, e.what());
       }
       print_comma(i < n_runs-1);
    }
@@ -124,17 +123,17 @@ void subroutine(IN     double            xi_0,
    // SA
 
    std::printf("\t\"sa_simulations\": {\n");
-   std::printf("\t\t\"header\": [\"id\", \"status\", \"VaR\", \"VaR_avg\", \"ES\"],\n");
+   std::printf("\t\t\"header\": [\"id\", \"status\", \"VaR\", \"VaR_avg\", \"ES\", \"ES_var\"],\n");
    std::printf("\t\t\"rows\": [\n");
 
    for (i = 0; i < n_runs; i++) {
       try {
          n = sa_optimal_steps(precision, scaler);
          risk_measures = sa(xi_0, chi_0, alpha, n, sa_gamma, simulator);
-         std::printf("\t\t\t[%d, \"success\", %.10f, %.10f, %.10f]",
-                     i+1, risk_measures.VaR, risk_measures.VaR_avg, risk_measures.ES);
+         std::printf("\t\t\t[%d, \"success\", %.10f, %.10f, %.10f, %.10f]",
+                     i+1, risk_measures.VaR, risk_measures.VaR_avg, risk_measures.ES, risk_measures.ES_var);
       } catch (const std::exception& e) {
-         std::printf("\t\t\t[%d, \"failure\", \"%s\",\"na\",\"na\"]", i+1, e.what());
+         std::printf("\t\t\t[%d, \"failure\", \"%s\",\"na\",\"na\",\"na\"]", i+1, e.what());
       }
       print_comma(i < n_runs-1);
    }
@@ -174,6 +173,7 @@ void run() {
               simulator, nested_simulator, ml_simulator);
 }
 
-int main(int argc, char* argv[]) {
+int main() {
    run();
+   return 0;
 }

@@ -108,11 +108,17 @@ Risk_Measures ml_sa(IN     double            xi_0,
                     IN     double            chi_0,
                     IN     double            alpha,
                     IN     int               L,
+		    IN     double            M,
+		    IN     double            beta,
                     IN     const double*     h,
                     IN     const long int*   N,
                     IN     const Step&       step,
+		    IN     bool              average_out,
                     IN OUT Nested_Simulator& simulator,
                     IN OUT ML_Simulator&     ml_simulator) {
+   double var1, var2, tmp, V1, V2;
+   V1 = V2 = 0;
+
    double xi[L+1][2];
    double xi_avg[L+1][2];
    double chi[L+1][2];
@@ -127,18 +133,34 @@ Risk_Measures ml_sa(IN     double            xi_0,
 
    simulator.set_bias_parameter(h[0]);
    double X;
+
    for (long int i = 0L; i < N[0]; i++) {
       X = simulator();
+
+      tmp = positive_part(X - xi[0][0]);
+      V1 += std::pow(tmp, 2)/double(N[0]);
+      V2 += tmp/double(N[0]);
+
       chi[0][0] = chi[0][0] - H_2(alpha, chi[0][0], xi[0][0], X)/double(i+1L);
       xi[0][0] = xi[0][0] - step(i+1L)*H_1(alpha, xi[0][0], X);
       xi_avg[0][0] = (1-1/double(i+1L))*xi_avg[0][0] + xi[0][0]/double(i+1L);
    }
 
+   var1 = V1 - std::pow(V2, 2);
+
    ML_Simulations X_ml;
+   V1 = V2 = 0;
    for (int l = 1; l < L+1; l++) {
       ml_simulator.set_bias_parameters(h[l-1], h[l]);
       for (long int i = 0L; i < N[l]; i++) {
          X_ml = ml_simulator();
+
+         if (l == L) {
+	    tmp = heaviside(X_ml.fine - xi[L][1])*X_ml.G;
+	    V1 += std::pow(tmp, 2)/double(N[L]);
+	    V2 += tmp/double(N[L]);
+	 }
+
          chi[l][0] = chi[l][0] - H_2(alpha, chi[l][0], xi[l][0], X_ml.coarse)/double(i+1L);
          chi[l][1] = chi[l][1] - H_2(alpha, chi[l][1], xi[l][1], X_ml.fine)/double(i+1L);
          xi[l][0] = xi[l][0] - step(i+1L)*H_1(alpha, xi[l][0], X_ml.coarse);
@@ -147,6 +169,8 @@ Risk_Measures ml_sa(IN     double            xi_0,
          xi_avg[l][1] = (1-1/double(i+1L))*xi_avg[l][1] + xi[l][1]/double(i+1L);
       }
    }
+
+   var2 = V1 - std::pow(V2, 2);
 
    double xi_ml = xi[0][0];
    double xi_avg_ml = xi_avg[0][0];
@@ -157,9 +181,22 @@ Risk_Measures ml_sa(IN     double            xi_0,
       chi_ml += chi[l][1] - chi[l][0];
    }
 
+   double var, pow;
+   if (average_out) {
+      var = var1*std::pow(std::pow(M, 1./4) - 1, 1./2)/std::pow(std::pow(h[0], 3)*M, 1./8);
+      var += var2*std::pow(h[0]/M, 1./4);
+      var /= std::pow(1 - alpha, 2);
+   } else {
+      pow = (2*beta-1)/(2*(1+beta));
+      var = var1/(h[0]*std::pow(M, pow/beta));
+      var += var2/(std::pow(M, pow) - 1);
+      var *= std::pow(h[0], pow)*std::pow(std::pow(M, pow) - 1, 1./beta)/std::pow(1 - alpha, 2);
+   }
+
    return Risk_Measures {
       .VaR = xi_ml,
       .VaR_avg = xi_avg_ml,
       .ES = chi_ml,
+      .ES_var = var,
    };
 }

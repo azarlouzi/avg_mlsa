@@ -7,6 +7,7 @@ struct Risk_Measures {
    double VaR = 0;
    double VaR_avg = 0;
    double ES = 0;
+   double ES_var = 0;
 };
 
 class Simulator {

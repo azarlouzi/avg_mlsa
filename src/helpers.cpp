@@ -32,11 +32,3 @@ double heaviside(double x) {
 double positive_part(double x) {
    return x > 0 ? x : 0;
 }
-
-double power(double x, int n) {
-   return power(x, double(n));
-}
-
-double power(double x, double y) {
-   return std::exp(y * std::log(x));
-}

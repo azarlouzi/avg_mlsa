@@ -8,6 +8,7 @@
 struct ML_Simulations {
    double coarse;
    double fine;
+   double G;
 };
 
 class ML_Simulator {
@@ -41,9 +42,12 @@ Risk_Measures ml_sa(IN     double            xi_0,
                     IN     double            chi_0,
                     IN     double            alpha,
                     IN     int               L,
+		    IN     double            M,
+		    IN     double            beta,
                     IN     const double*     h,
                     IN     const long int*   N,
                     IN     const Step&       step,
+		    IN     bool              average_out,
                     IN OUT Nested_Simulator& simulator,
                     IN OUT ML_Simulator&     ml_simulator);
 

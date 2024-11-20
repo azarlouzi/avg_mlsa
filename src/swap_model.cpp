@@ -142,29 +142,43 @@ Swap_ML_Simulator::Swap_ML_Simulator(double r,
 ML_Simulations Swap_ML_Simulator::operator()() const {
    double Y = sd_amortization(kappa, delta)*gaussian();
    double Z[d-1];
+   double cash_flow;
+   double G, V1, V2;
+   V1 = V2 = 0;
 
    long int K_coarse = (long int) std::ceil(1./h_coarse);
+   long int K_fine = (long int) std::ceil(1./h_fine);
+
    double X_h_coarse = 0;
    for (long int k = 0L; k < K_coarse; k++) {
       Z[0] = sd_amortization(kappa, Delta-delta)*gaussian();
       for (int i = 1; i < d-1; i++) {
          Z[i] = sd_amortization(kappa, Delta)*gaussian();
       }
-      X_h_coarse += phi(Y, Z)/double(K_coarse);
+      cash_flow = phi(Y, Z);
+      X_h_coarse += cash_flow/double(K_coarse);
+      V1 += std::pow(cash_flow, 2)/double(K_fine);
+      V2 += cash_flow/double(K_fine);
    }
 
-   long int K_fine = (long int) std::ceil(1./h_fine);
    double X_h_fine = X_h_coarse*double(K_coarse)/double(K_fine);
    for (long int k = 0L; k < (K_fine - K_coarse); k++) {
       Z[0] = sd_amortization(kappa, Delta-delta)*gaussian();
       for (int i = 1; i < d-1; i++) {
          Z[i] = sd_amortization(kappa, Delta)*gaussian();
       }
-      X_h_fine += phi(Y, Z)/double(K_fine);
+      cash_flow = phi(Y, Z);
+      X_h_fine += cash_flow/double(K_fine);
+      V1 += std::pow(cash_flow, 2)/double(K_fine);
+      V2 += cash_flow/double(K_fine);
    }
+
+   double M = double(K_fine)/double(K_coarse);
+   G = std::sqrt((M - 1)*(V1 - std::pow(V2, 2)))*gaussian();
 
    return ML_Simulations {
       .coarse = X_h_coarse,
       .fine = X_h_fine,
+      .G = G,
    };
 }

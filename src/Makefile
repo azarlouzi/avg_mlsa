@@ -6,14 +6,12 @@ else
 endif
 
 all: main clean
-main: main.o ml_sa.o nested_sa.o sa.o option_model.o swap_model.o helpers.o
-	$C -o main main.o ml_sa.o nested_sa.o sa.o option_model.o swap_model.o helpers.o
-main.o: main.cpp helpers.h ml_sa.h nested_sa.h sa.h option_model.h swap_model.h
+main: main.o ml_sa.o nested_sa.o sa.o swap_model.o helpers.o
+	$C -o main main.o ml_sa.o nested_sa.o sa.o swap_model.o helpers.o
+main.o: main.cpp helpers.h ml_sa.h nested_sa.h sa.h swap_model.h
 	$C -c main.cpp
 swap_model.o: swap_model.cpp swap_model.h ml_sa.h nested_sa.h sa.h helpers.h
 	$C -c swap_model.cpp
-option_model.o: option_model.cpp option_model.h ml_sa.h nested_sa.h sa.h helpers.h
-	$C -c option_model.cpp
 ml_sa.o: ml_sa.cpp ml_sa.h nested_sa.h sa.h helpers.h
 	$C -c ml_sa.cpp
 nested_sa.o: nested_sa.cpp nested_sa.h helpers.h sa.h
