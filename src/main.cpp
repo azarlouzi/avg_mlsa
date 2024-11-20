@@ -39,26 +39,31 @@ void subroutine(IN     double            xi_0,
                 IN OUT ML_Simulator&     ml_simulator) {
    Risk_Measures risk_measures;
 
-   risk_measures = biased_estimator(xi_0, chi_0, alpha, precision,
-                                    nested_sa_gamma, nested_simulator);
-
    std::printf("{\n");
    std::printf("\t\"precision\": %.10f,\n", precision);
    std::printf("\t\"beta\": %.10f,\n", beta);
-   std::printf("\t\"biased_VaR\": %.10f,\n", risk_measures.VaR);
-   std::printf("\t\"biased_ES\": %.10f,\n", risk_measures.ES);
+
+   int n_runs = 200;
+   int i;
+
+   std::printf("\t\"biased_risk_measures\": [\n");
+   for (i = 0; i < n_runs; i++) {
+      risk_measures = biased_estimator(xi_0, chi_0, alpha, precision, nested_sa_gamma, nested_simulator);
+      std::printf("\t\t[%.10f, %.10f]", risk_measures.VaR, risk_measures.ES);
+      print_comma(i < n_runs-1);
+   }
+   std::printf("\t],\n");
 
    long int n; // n >> 1
    double scaler = 1;
-
-   int n_runs = 5000;
-   int i;
 
    double h_0 = 1./32; // precision < h_0 < 1
    double M = 2;
    int L = ml_sa_optimal_levels(precision, h_0, M);
    double h[L+1];
    long int N[L+1];
+
+   n_runs = 5000;
 
    // Averaged ML SA
 
